@@ -5,6 +5,12 @@ description = "Transforme seu c√≥digo Python em um mapa interativo no terminal ‚
 authors = ["RhogarDarkmor"]
 license = "MIT"
 readme = "README.md"
+packages = [
+  { include = "metrocode", from = "src" }
+]
+
+[tool.poetry.scripts]
+metrocode = "metrocode.app:main"
 
 [tool.poetry.dependencies]
 python = "^3.11"
