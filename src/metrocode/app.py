@@ -1,9 +1,62 @@
 from __future__ import annotations
 
+import argparse
 import json
+import logging
 import sys
+import tempfile
+import shutil
+import subprocess
+import re
+import os
+import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Any
+
+
+def _is_github_shorthand(s: str) -> bool:
+    """Detecta strings no formato `owner/repo` para GitHub."""
+    return bool(re.match(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", s))
+
+
+def _to_github_url(s: str) -> str:
+    """Converte `owner/repo` em URL HTTPS para clonagem."""
+    return f"https://github.com/{s}.git"
+
+
+def _is_zip_path(s: str) -> bool:
+    """Detecta se a string aponta para um arquivo zip local ou remoto."""
+    return isinstance(s, str) and (s.lower().endswith(".zip") or s.startswith("http") and s.lower().endswith(".zip"))
+
+
+def _download_and_extract_zip(url_or_path: str, dest: str) -> None:
+    """Baixa (se URL) e extrai um ZIP para `dest`.
+
+    Aceita tanto caminhos locais quanto URLs HTTP(S).
+    """
+    dest_path = Path(dest)
+    dest_path.mkdir(parents=True, exist_ok=True)
+
+    if url_or_path.startswith("http://") or url_or_path.startswith("https://"):
+        with urllib.request.urlopen(url_or_path) as resp:
+            data = resp.read()
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+        try:
+            tmp.write(data)
+            tmp.flush()
+            with zipfile.ZipFile(tmp.name, "r") as z:
+                z.extractall(dest)
+        finally:
+            tmp.close()
+            try:
+                os.unlink(tmp.name)
+            except Exception:
+                pass
+    else:
+        # caminho local
+        with zipfile.ZipFile(url_or_path, "r") as z:
+            z.extractall(dest)
 
 
 def _normalize_station_name(name: str) -> str:
@@ -343,17 +396,40 @@ class MetroApp(MetroCodeApp):
 
 
 def main(argv: list[str] | None = None) -> None:
-    args = list(sys.argv[1:] if argv is None else argv)
-    path = "."
-    output_format = "ui"
-    export_path: str | None = None
-    export_format = "png"
-    export_layout = "metro"
+    parser = argparse.ArgumentParser(prog="metrocode", description="Gera um mapa interativo do código fonte")
+    parser.add_argument("path", nargs="?", default=".", help="Caminho local, URL git, owner/repo ou ZIP")
+    parser.add_argument("--json", "-j", dest="output", action="store_const", const="json", help="Saída em JSON")
+    parser.add_argument("--text", "-t", dest="output", action="store_const", const="text", help="Saída em texto")
+    parser.add_argument("--export", "-e", dest="export_path", help="Exportar mapa para arquivo (png/svg)")
+    parser.add_argument("--format", dest="export_format", default="png", help="Formato de exportação (png|svg)")
+    parser.add_argument("--layout", dest="export_layout", default="metro", help="Modo de layout (metro|geografico|circular)")
+    parser.add_argument("--no-clean", dest="no_clean", action="store_true", help="Manter arquivos temporários (clone/zip)")
+    parser.add_argument("-v", "--verbose", dest="verbose", action="count", default=0, help="Aumentar verbosidade (mais -v aumenta nível)")
+
+    parsed = parser.parse_args(argv)
+
+    # configurar logging
+    level = logging.WARNING
+    if parsed.verbose >= 2:
+        level = logging.DEBUG
+    elif parsed.verbose == 1:
+        level = logging.INFO
+    logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
+
+    path = parsed.path
+    output_format = parsed.output or "ui"
+    export_path: str | None = parsed.export_path
+    export_format = parsed.export_format
+    export_layout = parsed.export_layout
+    no_clean = parsed.no_clean
 
     for arg in args:
         if arg in {"--help", "-h"}:
             print("Uso: metrocode [caminho] [--json] [--text]")
             return
+        if arg == "--no-clean":
+            no_clean = True
+            continue
         if arg in {"--json", "-j"}:
             output_format = "json"
         elif arg in {"--text", "-t"}:
@@ -373,7 +449,46 @@ def main(argv: list[str] | None = None) -> None:
                 # use second positional as export target
                 export_path = arg
 
-    mapa_data = parse_project(path)
+    # Se `path` for uma URL do GitHub, clona num diretório temporário; se for ZIP, baixa/extrai.
+    _temp_clone: str | None = None
+    _temp_extracted: str | None = None
+    try:
+        # aceitar shorthand "owner/repo"
+        if isinstance(path, str) and _is_github_shorthand(path) and not Path(path).exists():
+            logging.info("Interpretando shorthand GitHub %s", path)
+            path = _to_github_url(path)
+
+        # ZIP remoto/local
+        if isinstance(path, str) and _is_zip_path(path):
+            logging.info("Detectado ZIP %s — extraindo para temporário", path)
+            _temp_extracted = tempfile.mkdtemp(prefix="metrocode_zip_")
+            try:
+                _download_and_extract_zip(path, _temp_extracted)
+                path = _temp_extracted
+            except Exception as exc:  # pragma: no cover - env-specific
+                logging.error("Erro ao extrair ZIP %s: %s", path, exc)
+                if os.path.exists(_temp_extracted):
+                    shutil.rmtree(_temp_extracted)
+                return
+
+        if isinstance(path, str) and (path.startswith("http://") or path.startswith("https://") or path.startswith("git@")) and "github.com" in path:
+            logging.info("Clonando repositório %s", path)
+            _temp_clone = tempfile.mkdtemp(prefix="metrocode_git_")
+            try:
+                if shutil.which("git") is None:
+                    raise RuntimeError("git não encontrado no PATH; instale o Git para usar repositórios remotos")
+                subprocess.check_call(["git", "clone", "--depth", "1", path, _temp_clone], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                path = _temp_clone
+            except Exception as exc:  # pragma: no cover - environment-specific
+                logging.error("Erro ao clonar o repositório %s: %s", path, exc)
+                if os.path.exists(_temp_clone):
+                    shutil.rmtree(_temp_clone)
+                return
+
+        mapa_data = parse_project(path)
+    finally:
+        # não limpar aqui — faremos o cleanup no final, dependendo de --no-clean
+        pass
 
     if output_format == "json":
         print(json.dumps(mapa_data, indent=2, ensure_ascii=False))
@@ -387,9 +502,35 @@ def main(argv: list[str] | None = None) -> None:
 
     if output_format == "text" or not sys.stdout.isatty():
         print(build_summary(mapa_data))
+        if not no_clean:
+            if _temp_clone and os.path.exists(_temp_clone):
+                logging.debug("Removendo clone temporário %s", _temp_clone)
+                shutil.rmtree(_temp_clone)
+            if _temp_extracted and os.path.exists(_temp_extracted):
+                logging.debug("Removendo extração temporária %s", _temp_extracted)
+                shutil.rmtree(_temp_extracted)
+        else:
+            if _temp_clone:
+                print(f"Clone temporário mantido em: {_temp_clone}")
+            if _temp_extracted:
+                print(f"ZIP extraído em: {_temp_extracted}")
         return
 
-    run_visual_dashboard(mapa_data)
+    try:
+        run_visual_dashboard(mapa_data)
+    finally:
+        if not no_clean:
+            if _temp_clone and os.path.exists(_temp_clone):
+                logging.debug("Removendo clone temporário %s", _temp_clone)
+                shutil.rmtree(_temp_clone)
+            if _temp_extracted and os.path.exists(_temp_extracted):
+                logging.debug("Removendo extração temporária %s", _temp_extracted)
+                shutil.rmtree(_temp_extracted)
+        else:
+            if _temp_clone:
+                print(f"Clone temporário mantido em: {_temp_clone}")
+            if _temp_extracted:
+                print(f"ZIP extraído em: {_temp_extracted}")
 
 
 if __name__ == "__main__":
