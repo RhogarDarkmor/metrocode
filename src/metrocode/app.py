@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from logging.handlers import RotatingFileHandler
 import sys
 import tempfile
 import shutil
@@ -405,6 +406,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--layout", dest="export_layout", default="metro", help="Modo de layout (metro|geografico|circular)")
     parser.add_argument("--no-clean", dest="no_clean", action="store_true", help="Manter arquivos temporários (clone/zip)")
     parser.add_argument("-v", "--verbose", dest="verbose", action="count", default=0, help="Aumentar verbosidade (mais -v aumenta nível)")
+    parser.add_argument("--log-file", dest="log_file", default="metrocode.log", help="Arquivo de log de saída")
 
     parsed = parser.parse_args(argv)
 
@@ -414,7 +416,12 @@ def main(argv: list[str] | None = None) -> None:
         level = logging.DEBUG
     elif parsed.verbose == 1:
         level = logging.INFO
-    logging.basicConfig(level=level, format="%(levelname)s: %(message)s")
+
+    handlers = [logging.StreamHandler()]
+    if parsed.log_file:
+        handlers.append(RotatingFileHandler(parsed.log_file, maxBytes=1_000_000, backupCount=3, encoding="utf-8"))
+
+    logging.basicConfig(level=level, format="%(asctime)s %(levelname)s: %(message)s", handlers=handlers)
 
     path = parsed.path
     output_format = parsed.output or "ui"
@@ -422,34 +429,23 @@ def main(argv: list[str] | None = None) -> None:
     export_format = parsed.export_format
     export_layout = parsed.export_layout
     no_clean = parsed.no_clean
+    log_file = parsed.log_file
 
-    for arg in args:
-        if arg in {"--help", "-h"}:
-            print("Uso: metrocode [caminho] [--json] [--text]")
+    def _cleanup(temp_clone: str | None, temp_extracted: str | None) -> None:
+        if no_clean:
+            if temp_clone:
+                print(f"Clone temporário mantido em: {temp_clone}")
+            if temp_extracted:
+                print(f"ZIP extraído em: {temp_extracted}")
             return
-        if arg == "--no-clean":
-            no_clean = True
-            continue
-        if arg in {"--json", "-j"}:
-            output_format = "json"
-        elif arg in {"--text", "-t"}:
-            output_format = "text"
-        elif arg in {"--export", "-e"}:
-            # next non-flag argument will be treated as export path
-            # handled below when encountering a non-flag
-            export_path = None
-        elif arg.startswith("--format="):
-            export_format = arg.split("=", 1)[1]
-        elif arg.startswith("--layout="):
-            export_layout = arg.split("=", 1)[1]
-        elif not arg.startswith("-"):
-            if path == ".":
-                path = arg
-            else:
-                # use second positional as export target
-                export_path = arg
 
-    # Se `path` for uma URL do GitHub, clona num diretório temporário; se for ZIP, baixa/extrai.
+        if temp_clone and os.path.exists(temp_clone):
+            logging.debug("Removendo clone temporário %s", temp_clone)
+            shutil.rmtree(temp_clone)
+        if temp_extracted and os.path.exists(temp_extracted):
+            logging.debug("Removendo extração temporária %s", temp_extracted)
+            shutil.rmtree(temp_extracted)
+
     _temp_clone: str | None = None
     _temp_extracted: str | None = None
     try:
@@ -486,51 +482,23 @@ def main(argv: list[str] | None = None) -> None:
                 return
 
         mapa_data = parse_project(path)
-    finally:
-        # não limpar aqui — faremos o cleanup no final, dependendo de --no-clean
-        pass
 
-    if output_format == "json":
-        print(json.dumps(mapa_data, indent=2, ensure_ascii=False))
-        return
+        if output_format == "json":
+            print(json.dumps(mapa_data, indent=2, ensure_ascii=False))
+            return
 
-    # export image if requested: --export <path> [--format=png|svg] [--layout=metro|geografico|circular]
-    if export_path:
-        out = export_map_image(mapa_data, output=export_path, fmt=export_format, layout_mode=export_layout)
-        print(f"Exportado: {out}")
-        return
+        if export_path:
+            out = export_map_image(mapa_data, output=export_path, fmt=export_format, layout_mode=export_layout)
+            print(f"Exportado: {out}")
+            return
 
-    if output_format == "text" or not sys.stdout.isatty():
-        print(build_summary(mapa_data))
-        if not no_clean:
-            if _temp_clone and os.path.exists(_temp_clone):
-                logging.debug("Removendo clone temporário %s", _temp_clone)
-                shutil.rmtree(_temp_clone)
-            if _temp_extracted and os.path.exists(_temp_extracted):
-                logging.debug("Removendo extração temporária %s", _temp_extracted)
-                shutil.rmtree(_temp_extracted)
-        else:
-            if _temp_clone:
-                print(f"Clone temporário mantido em: {_temp_clone}")
-            if _temp_extracted:
-                print(f"ZIP extraído em: {_temp_extracted}")
-        return
+        if output_format == "text" or not sys.stdout.isatty():
+            print(build_summary(mapa_data))
+            return
 
-    try:
         run_visual_dashboard(mapa_data)
     finally:
-        if not no_clean:
-            if _temp_clone and os.path.exists(_temp_clone):
-                logging.debug("Removendo clone temporário %s", _temp_clone)
-                shutil.rmtree(_temp_clone)
-            if _temp_extracted and os.path.exists(_temp_extracted):
-                logging.debug("Removendo extração temporária %s", _temp_extracted)
-                shutil.rmtree(_temp_extracted)
-        else:
-            if _temp_clone:
-                print(f"Clone temporário mantido em: {_temp_clone}")
-            if _temp_extracted:
-                print(f"ZIP extraído em: {_temp_extracted}")
+        _cleanup(_temp_clone, _temp_extracted)
 
 
 if __name__ == "__main__":

@@ -42,3 +42,50 @@ Exemplos com verbosidade e sem limpeza de temporários:
 ./.venv/Scripts/python.exe -m metrocode.app psf/requests -v
 ./.venv/Scripts/python.exe -m metrocode.app https://github.com/owner/repo.git --no-clean -vv
 ```
+
+## Integração contínua e build
+
+- O projeto já inclui um workflow GitHub Actions em `.github/workflows/python-ci.yml`.
+- Ele roda testes com `pytest`, faz lint com `ruff` e constrói o pacote com `poetry build`.
+
+## Docker
+
+Construir a imagem:
+
+```bash
+docker build -t metrocode .
+```
+
+Executar o app dentro do container:
+
+```bash
+docker run --rm metrocode
+```
+
+## Changelog
+
+Veja `CHANGELOG.md` para o histórico e as melhorias planejadas.
+
+
+## Integração contínua e build
+
+- O projeto já inclui um workflow GitHub Actions em `.github/workflows/python-ci.yml`.
+- Ele roda testes com `pytest`, faz lint com `ruff` e constrói o pacote com `poetry build`.
+
+## Docker
+
+Construir a imagem:
+
+```bash
+docker build -t metrocode .
+```
+
+Executar o app dentro do container:
+
+```bash
+docker run --rm metrocode
+```
+
+## Changelog
+
+Veja `CHANGELOG.md` para o histórico e as melhorias planejadas.
