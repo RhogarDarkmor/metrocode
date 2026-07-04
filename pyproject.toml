@@ -24,6 +24,11 @@ matplotlib = "^3.8.0"
 pytest = "^8.0"
 ruff = "^0.3.0"
 
+[tool.ruff]
+line-length = 88
+extend-select = ["E", "W", "F", "I", "B"]
+exclude = [".venv", "build", "dist", "__pycache__"]
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
