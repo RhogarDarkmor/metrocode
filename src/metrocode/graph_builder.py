@@ -7,8 +7,8 @@ com estações (nós) e trilhos (arestas) coloridos igual linha de metrô.
 from __future__ import annotations
 
 from typing import Any
-import networkx as nx
 
+import networkx as nx
 
 LINE_COLORS: dict[str, str] = {
     "azul": "#005FA7",
@@ -31,8 +31,14 @@ DEFAULT_EDGE_COLOR = "#AAAAAA"
 def _choose_edge_color(modulo: str, line_color_map: dict[str, str]) -> str:
     root_module = modulo.split(".")[0]
     if root_module not in line_color_map:
-        available_colors = [color for color in LINE_COLORS.values() if color not in line_color_map.values()]
-        line_color_map[root_module] = available_colors[0] if available_colors else DEFAULT_EDGE_COLOR
+        available_colors = [
+            color
+            for color in LINE_COLORS.values()
+            if color not in line_color_map.values()
+        ]
+        line_color_map[root_module] = (
+            available_colors[0] if available_colors else DEFAULT_EDGE_COLOR
+        )
     return line_color_map[root_module]
 
 
@@ -85,10 +91,16 @@ def construir_grafo(mapa: dict[str, Any]) -> nx.Graph:
                 estacao_pai=nome_estacao,
             )
             if not grafo.has_edge(nome_estacao, id_plataforma):
-                grafo.add_edge(nome_estacao, id_plataforma, tipo="interno", cor="#555555")
+                grafo.add_edge(
+                    nome_estacao, id_plataforma, tipo="interno", cor="#555555"
+                )
 
         for trilho in dados.get("trilhos", []):
-            modulo_importado = trilho.get("qualificado") or trilho.get("modulo") or trilho.get("destino")
+            modulo_importado = (
+                trilho.get("qualificado")
+                or trilho.get("modulo")
+                or trilho.get("destino")
+            )
             if not modulo_importado:
                 continue
 

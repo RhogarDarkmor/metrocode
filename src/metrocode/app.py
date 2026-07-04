@@ -3,15 +3,15 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from logging.handlers import RotatingFileHandler
-import sys
-import tempfile
+import os
+import re
 import shutil
 import subprocess
-import re
-import os
+import sys
+import tempfile
 import urllib.request
 import zipfile
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +28,11 @@ def _to_github_url(s: str) -> str:
 
 def _is_zip_path(s: str) -> bool:
     """Detecta se a string aponta para um arquivo zip local ou remoto."""
-    return isinstance(s, str) and (s.lower().endswith(".zip") or s.startswith("http") and s.lower().endswith(".zip"))
+    return isinstance(s, str) and (
+        s.lower().endswith(".zip")
+        or s.startswith("http")
+        and s.lower().endswith(".zip")
+    )
 
 
 def _download_and_extract_zip(url_or_path: str, dest: str) -> None:
@@ -63,6 +67,7 @@ def _download_and_extract_zip(url_or_path: str, dest: str) -> None:
 def _normalize_station_name(name: str) -> str:
     return name.strip().replace("\\", "/")
 
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -70,17 +75,19 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, ListItem, ListView, Static
 
-from .parser import parse_project
+from . import __version__
 from .graph_builder import construir_grafo
 from .layout_engine import calcular_layout
-from . import __version__
+from .parser import parse_project
 
 
 def build_summary(mapa_data: dict[str, Any]) -> str:
     """Gera um resumo textual legível do mapa do projeto."""
     estacoes = mapa_data.get("estacoes", {})
     if not estacoes:
-        return "🚇 Nenhuma estação encontrada. Execute em um diretório com código Python."
+        return (
+            "🚇 Nenhuma estação encontrada. Execute em um diretório com código Python."
+        )
 
     linhas = ["🚇 METRÔCODE - MAPA DE DEPENDÊNCIAS", "=" * 40, ""]
 
@@ -116,7 +123,9 @@ class MetroMap(Static):
         return build_summary(self.mapa_data)
 
 
-def build_visual_preview(mapa_data: dict[str, Any], selected_station: str | None = None) -> str:
+def build_visual_preview(
+    mapa_data: dict[str, Any], selected_station: str | None = None
+) -> str:
     """Gera uma pré-visualização visual do mapa em estilo terminal."""
     estacoes = list(mapa_data.get("estacoes", {}).keys())
     if not estacoes:
@@ -142,18 +151,27 @@ def build_visual_preview(mapa_data: dict[str, Any], selected_station: str | None
     return "\n".join(linhas)
 
 
-def export_map_image(mapa_data: dict[str, Any], *, output: str | Path = "metrocode_map.png", fmt: str = "png", layout_mode: str = "metro") -> str:
+def export_map_image(
+    mapa_data: dict[str, Any],
+    *,
+    output: str | Path = "metrocode_map.png",
+    fmt: str = "png",
+    layout_mode: str = "metro",
+) -> str:
     """Exporta o mapa como imagem (PNG ou SVG) usando NetworkX + Matplotlib.
 
     Retorna o caminho do arquivo gerado.
     """
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import networkx as nx
     except Exception as exc:  # pragma: no cover - environment-specific
-        raise RuntimeError("matplotlib e networkx são necessários para exportar imagens") from exc
+        raise RuntimeError(
+            "matplotlib e networkx são necessários para exportar imagens"
+        ) from exc
 
     fmt = fmt.lower()
     if fmt not in {"png", "svg"}:
@@ -169,8 +187,13 @@ def export_map_image(mapa_data: dict[str, Any], *, output: str | Path = "metroco
     fig.patch.set_facecolor("#f8fafc")
     ax.set_facecolor("#f8fafc")
 
-    edge_colors = [d.get("cor", "#444444") for _, _, d in station_graph.edges(data=True)]
-    edge_widths = [4 if d.get("tipo") == "import" else 2 for _, _, d in station_graph.edges(data=True)]
+    edge_colors = [
+        d.get("cor", "#444444") for _, _, d in station_graph.edges(data=True)
+    ]
+    edge_widths = [
+        4 if d.get("tipo") == "import" else 2
+        for _, _, d in station_graph.edges(data=True)
+    ]
 
     nx.draw_networkx_edges(
         station_graph,
@@ -194,10 +217,7 @@ def export_map_image(mapa_data: dict[str, Any], *, output: str | Path = "metroco
         alpha=0.98,
     )
 
-    labels = {
-        n: n.rsplit("/", 1)[-1].replace(".py", "")
-        for n in station_nodes
-    }
+    labels = {n: n.rsplit("/", 1)[-1].replace(".py", "") for n in station_nodes}
     for n in station_nodes:
         x, y = pos[n]
         ax.text(
@@ -208,10 +228,21 @@ def export_map_image(mapa_data: dict[str, Any], *, output: str | Path = "metroco
             ha="center",
             va="center",
             color="#111827",
-            bbox={"facecolor": "#ffffff", "edgecolor": "#111827", "boxstyle": "round,pad=0.2", "alpha": 0.95},
+            bbox={
+                "facecolor": "#ffffff",
+                "edgecolor": "#111827",
+                "boxstyle": "round,pad=0.2",
+                "alpha": 0.95,
+            },
         )
 
-    legend_items = sorted({d.get("modulo", "externo").split(".")[0] for _, _, d in station_graph.edges(data=True) if d.get("modulo")})
+    legend_items = sorted(
+        {
+            d.get("modulo", "externo").split(".")[0]
+            for _, _, d in station_graph.edges(data=True)
+            if d.get("modulo")
+        }
+    )
     if legend_items:
         legend_text = "Linhas: " + ", ".join(legend_items[:10])
         ax.text(
@@ -222,7 +253,12 @@ def export_map_image(mapa_data: dict[str, Any], *, output: str | Path = "metroco
             fontsize=8,
             va="top",
             ha="left",
-            bbox={"facecolor": "#ffffff", "edgecolor": "#111827", "boxstyle": "round,pad=0.3", "alpha": 0.95},
+            bbox={
+                "facecolor": "#ffffff",
+                "edgecolor": "#111827",
+                "boxstyle": "round,pad=0.3",
+                "alpha": 0.95,
+            },
         )
 
     ax.set_aspect("equal")
@@ -233,6 +269,7 @@ def export_map_image(mapa_data: dict[str, Any], *, output: str | Path = "metroco
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, format=fmt, dpi=200)
     import matplotlib.pyplot as _plt
+
     _plt.close(fig)
 
     return str(out_path)
@@ -324,12 +361,21 @@ def run_visual_dashboard(mapa_data: dict[str, Any]) -> None:
     station_names = list(estacoes.keys())
 
     if not station_names:
-        console.print(Panel.fit("🚇 Nenhuma estação disponível", title="MetrôCode", border_style="red"))
+        console.print(
+            Panel.fit(
+                "🚇 Nenhuma estação disponível", title="MetrôCode", border_style="red"
+            )
+        )
         return
 
     while True:
         console.clear()
-        console.print(Panel.fit("[bold cyan]🚇 METRÔCODE[/bold cyan]\n[dim]Mapa visual interativo do projeto[/dim]", border_style="cyan"))
+        console.print(
+            Panel.fit(
+                "[bold cyan]🚇 METRÔCODE[/bold cyan]\n[dim]Mapa visual interativo do projeto[/dim]",
+                border_style="cyan",
+            )
+        )
 
         table = Table(title="Estações", show_header=True, header_style="bold magenta")
         table.add_column("#", justify="right", style="cyan")
@@ -339,10 +385,17 @@ def run_visual_dashboard(mapa_data: dict[str, Any]) -> None:
 
         for index, station_name in enumerate(station_names[:10], start=1):
             dados = estacoes[station_name]
-            table.add_row(str(index), station_name, str(dados.get("total_plataformas", 0)), str(dados.get("total_trilhos", 0)))
+            table.add_row(
+                str(index),
+                station_name,
+                str(dados.get("total_plataformas", 0)),
+                str(dados.get("total_trilhos", 0)),
+            )
 
         console.print(table)
-        console.print("[bold]Comandos:[/bold] digite o número da estação para ver detalhes ou [q] para sair")
+        console.print(
+            "[bold]Comandos:[/bold] digite o número da estação para ver detalhes ou [q] para sair"
+        )
 
         try:
             choice = console.input("[bold]Escolha[/bold] > ").strip().lower()
@@ -356,7 +409,13 @@ def run_visual_dashboard(mapa_data: dict[str, Any]) -> None:
             index = int(choice) - 1
             if 0 <= index < len(station_names[:10]):
                 station_name = station_names[index]
-                console.print(Panel.fit(build_station_details(mapa_data, station_name), title=f"Detalhes: {station_name}", border_style="green"))
+                console.print(
+                    Panel.fit(
+                        build_station_details(mapa_data, station_name),
+                        title=f"Detalhes: {station_name}",
+                        border_style="green",
+                    )
+                )
                 console.input("[dim]Pressione Enter para continuar[/dim]")
             else:
                 console.print("[red]Seleção inválida.[/red]")
@@ -427,10 +486,14 @@ class MetroCodeApp(App):
     }
     """
 
-    def __init__(self, project_path: str | Path = ".", *, mapa_data: dict[str, Any] | None = None):
+    def __init__(
+        self, project_path: str | Path = ".", *, mapa_data: dict[str, Any] | None = None
+    ):
         super().__init__()
         self.project_path = str(project_path)
-        self.mapa_data = mapa_data if mapa_data is not None else parse_project(self.project_path)
+        self.mapa_data = (
+            mapa_data if mapa_data is not None else parse_project(self.project_path)
+        )
         self.station_names = list(self.mapa_data.get("estacoes", {}).keys())
 
     def compose(self) -> ComposeResult:
@@ -458,7 +521,9 @@ class MetroCodeApp(App):
     def _refresh_station(self, station_name: str) -> None:
         preview = self.query_one("#preview", Static)
         details = self.query_one("#details", Static)
-        preview.update(build_visual_preview(self.mapa_data, selected_station=station_name))
+        preview.update(
+            build_visual_preview(self.mapa_data, selected_station=station_name)
+        )
         details.update(build_station_details(self.mapa_data, station_name))
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
@@ -472,18 +537,76 @@ class MetroApp(MetroCodeApp):
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="metrocode", description="Gera um mapa interativo do código fonte")
-    parser.add_argument("--version", action="version", version=f"metrocode {__version__}")
-    parser.add_argument("path", nargs="?", default=".", help="Caminho local, URL git, owner/repo ou ZIP")
-    parser.add_argument("--json", "-j", dest="output", action="store_const", const="json", help="Saída em JSON")
-    parser.add_argument("--text", "-t", dest="output", action="store_const", const="text", help="Saída em texto")
-    parser.add_argument("--no-gui", dest="use_ui", action="store_false", default=True, help="Executar em modo texto, mesmo em terminal interativo")
-    parser.add_argument("--export", "-e", dest="export_path", help="Exportar mapa para arquivo (png/svg)")
-    parser.add_argument("--format", dest="export_format", default="png", help="Formato de exportação (png|svg)")
-    parser.add_argument("--layout", dest="export_layout", default="metro", help="Modo de layout (metro|geografico|circular)")
-    parser.add_argument("--no-clean", dest="no_clean", action="store_true", help="Manter arquivos temporários (clone/zip)")
-    parser.add_argument("-v", "--verbose", dest="verbose", action="count", default=0, help="Aumentar verbosidade (mais -v aumenta nível)")
-    parser.add_argument("--log-file", dest="log_file", default="metrocode.log", help="Arquivo de log de saída")
+    parser = argparse.ArgumentParser(
+        prog="metrocode", description="Gera um mapa interativo do código fonte"
+    )
+    parser.add_argument(
+        "--version", action="version", version=f"metrocode {__version__}"
+    )
+    parser.add_argument(
+        "path", nargs="?", default=".", help="Caminho local, URL git, owner/repo ou ZIP"
+    )
+    parser.add_argument(
+        "--json",
+        "-j",
+        dest="output",
+        action="store_const",
+        const="json",
+        help="Saída em JSON",
+    )
+    parser.add_argument(
+        "--text",
+        "-t",
+        dest="output",
+        action="store_const",
+        const="text",
+        help="Saída em texto",
+    )
+    parser.add_argument(
+        "--no-gui",
+        dest="use_ui",
+        action="store_false",
+        default=True,
+        help="Executar em modo texto, mesmo em terminal interativo",
+    )
+    parser.add_argument(
+        "--export",
+        "-e",
+        dest="export_path",
+        help="Exportar mapa para arquivo (png/svg)",
+    )
+    parser.add_argument(
+        "--format",
+        dest="export_format",
+        default="png",
+        help="Formato de exportação (png|svg)",
+    )
+    parser.add_argument(
+        "--layout",
+        dest="export_layout",
+        default="metro",
+        help="Modo de layout (metro|geografico|circular)",
+    )
+    parser.add_argument(
+        "--no-clean",
+        dest="no_clean",
+        action="store_true",
+        help="Manter arquivos temporários (clone/zip)",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        dest="verbose",
+        action="count",
+        default=0,
+        help="Aumentar verbosidade (mais -v aumenta nível)",
+    )
+    parser.add_argument(
+        "--log-file",
+        dest="log_file",
+        default="metrocode.log",
+        help="Arquivo de log de saída",
+    )
 
     parsed = parser.parse_args(argv)
 
@@ -496,9 +619,15 @@ def main(argv: list[str] | None = None) -> None:
 
     handlers = [logging.StreamHandler()]
     if parsed.log_file:
-        handlers.append(RotatingFileHandler(parsed.log_file, maxBytes=1_000_000, backupCount=3, encoding="utf-8"))
+        handlers.append(
+            RotatingFileHandler(
+                parsed.log_file, maxBytes=1_000_000, backupCount=3, encoding="utf-8"
+            )
+        )
 
-    logging.basicConfig(level=level, format="%(asctime)s %(levelname)s: %(message)s", handlers=handlers)
+    logging.basicConfig(
+        level=level, format="%(asctime)s %(levelname)s: %(message)s", handlers=handlers
+    )
 
     path = parsed.path
     output_format = parsed.output or "ui"
@@ -528,7 +657,11 @@ def main(argv: list[str] | None = None) -> None:
     _temp_extracted: str | None = None
     try:
         # aceitar shorthand "owner/repo"
-        if isinstance(path, str) and _is_github_shorthand(path) and not Path(path).exists():
+        if (
+            isinstance(path, str)
+            and _is_github_shorthand(path)
+            and not Path(path).exists()
+        ):
             logging.info("Interpretando shorthand GitHub %s", path)
             path = _to_github_url(path)
 
@@ -545,13 +678,27 @@ def main(argv: list[str] | None = None) -> None:
                     shutil.rmtree(_temp_extracted)
                 return
 
-        if isinstance(path, str) and (path.startswith("http://") or path.startswith("https://") or path.startswith("git@")) and "github.com" in path:
+        if (
+            isinstance(path, str)
+            and (
+                path.startswith("http://")
+                or path.startswith("https://")
+                or path.startswith("git@")
+            )
+            and "github.com" in path
+        ):
             logging.info("Clonando repositório %s", path)
             _temp_clone = tempfile.mkdtemp(prefix="metrocode_git_")
             try:
                 if shutil.which("git") is None:
-                    raise RuntimeError("git não encontrado no PATH; instale o Git para usar repositórios remotos")
-                subprocess.check_call(["git", "clone", "--depth", "1", path, _temp_clone], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    raise RuntimeError(
+                        "git não encontrado no PATH; instale o Git para usar repositórios remotos"
+                    )
+                subprocess.check_call(
+                    ["git", "clone", "--depth", "1", path, _temp_clone],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
                 path = _temp_clone
             except Exception as exc:  # pragma: no cover - environment-specific
                 logging.error("Erro ao clonar o repositório %s: %s", path, exc)
@@ -566,7 +713,12 @@ def main(argv: list[str] | None = None) -> None:
             return
 
         if export_path:
-            out = export_map_image(mapa_data, output=export_path, fmt=export_format, layout_mode=export_layout)
+            out = export_map_image(
+                mapa_data,
+                output=export_path,
+                fmt=export_format,
+                layout_mode=export_layout,
+            )
             print(f"Exportado: {out}")
             return
 

@@ -1,7 +1,13 @@
-from metrocode.app import _is_github_shorthand, _to_github_url, _is_zip_path, _download_and_extract_zip
-from metrocode.parser import parse_project
-from pathlib import Path
 import zipfile
+from pathlib import Path
+
+from metrocode.app import (
+    _download_and_extract_zip,
+    _is_github_shorthand,
+    _is_zip_path,
+    _to_github_url,
+)
+from metrocode.parser import parse_project
 
 
 def test_github_shorthand_and_url():

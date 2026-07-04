@@ -4,8 +4,9 @@ Calcula onde cada estação e plataforma vai aparecer no mapa.
 Usa algoritmos de grafo pra deixar tudo bem distribuído.
 """
 
-import networkx as nx
 import math
+
+import networkx as nx
 
 
 def calcular_layout(grafo, modo="metro"):
@@ -19,7 +20,11 @@ def calcular_layout(grafo, modo="metro"):
     """
 
     estacoes = [n for n, d in grafo.nodes(data=True) if d.get("tipo") == "estacao"]
-    plataformas = [n for n, d in grafo.nodes(data=True) if d.get("tipo") in ("funcao", "classe", "metodo")]
+    plataformas = [
+        n
+        for n, d in grafo.nodes(data=True)
+        if d.get("tipo") in ("funcao", "classe", "metodo")
+    ]
 
     if modo == "metro":
         return _layout_metro(grafo, estacoes, plataformas)
@@ -57,8 +62,7 @@ def _layout_metro(grafo, estacoes, plataformas):
     for estacao in estacoes:
         x, y = positions[estacao]
         platforms = [
-            p for p in plataformas
-            if grafo.nodes[p].get("estacao_pai") == estacao
+            p for p in plataformas if grafo.nodes[p].get("estacao_pai") == estacao
         ]
         if not platforms:
             continue
@@ -66,7 +70,10 @@ def _layout_metro(grafo, estacoes, plataformas):
         radius = 0.8 + min(len(platforms), 6) * 0.15
         for index, platform in enumerate(platforms):
             angle = (index / len(platforms)) * 2 * math.pi
-            positions[platform] = (x + radius * math.cos(angle), y + radius * math.sin(angle))
+            positions[platform] = (
+                x + radius * math.cos(angle),
+                y + radius * math.sin(angle),
+            )
 
     return positions
 
@@ -74,11 +81,12 @@ def _layout_metro(grafo, estacoes, plataformas):
 if __name__ == "__main__":
     try:
         # Tenta importar como módulo (quando rodado com -m)
-        from .parser import parse_project
         from .graph_builder import construir_grafo
+        from .parser import parse_project
     except ImportError:
         # Fallback para quando rodado diretamente
         from parser import parse_project
+
         from graph_builder import construir_grafo
 
     mapa = parse_project(".")

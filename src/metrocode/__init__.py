@@ -14,8 +14,20 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    if name in {"MetroApp", "MetroCodeApp", "build_summary", "build_visual_preview", "run_visual_dashboard"}:
-        from .app import MetroApp, MetroCodeApp, build_summary, build_visual_preview, run_visual_dashboard
+    if name in {
+        "MetroApp",
+        "MetroCodeApp",
+        "build_summary",
+        "build_visual_preview",
+        "run_visual_dashboard",
+    }:
+        from .app import (
+            MetroApp,
+            MetroCodeApp,
+            build_summary,
+            build_visual_preview,
+            run_visual_dashboard,
+        )
 
         return {
             "MetroApp": MetroApp,

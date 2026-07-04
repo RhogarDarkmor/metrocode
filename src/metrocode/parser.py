@@ -44,7 +44,9 @@ def _module_name_from_path(caminho: Path, root: Path) -> str:
     return relativo.replace("/", ".")
 
 
-def _resolve_relative_import(module: str | None, level: int, current_module: str) -> str:
+def _resolve_relative_import(
+    module: str | None, level: int, current_module: str
+) -> str:
     current_parts = current_module.split(".") if current_module else []
     if current_parts:
         current_parts = current_parts[:-1]
@@ -124,7 +126,9 @@ def parse_project(root_path: str | Path | None = ".") -> MapaData:
                         }
                     )
             elif isinstance(nodo, ast.ImportFrom):
-                resolved_module = _resolve_relative_import(nodo.module, nodo.level, modulo_atual)
+                resolved_module = _resolve_relative_import(
+                    nodo.module, nodo.level, modulo_atual
+                )
                 for alias in nodo.names:
                     if alias.name == "*":
                         qualificado = resolved_module or "*"

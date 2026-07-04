@@ -1,5 +1,12 @@
-from metrocode.app import MetroCodeApp, MetroApp, build_summary, build_visual_preview, run_interactive_console, run_visual_dashboard
-from metrocode.app import export_map_image
+from metrocode.app import (
+    MetroApp,
+    MetroCodeApp,
+    build_summary,
+    build_visual_preview,
+    export_map_image,
+    run_interactive_console,
+    run_visual_dashboard,
+)
 from metrocode.parser import parse_project
 
 
@@ -32,9 +39,7 @@ def test_parse_project_collects_files_and_nodes(tmp_path):
 def test_build_summary_renders_station_names(tmp_path):
     sample = tmp_path / "sample.py"
     sample.write_text(
-        "class Example:\n"
-        "    def run(self):\n"
-        "        return 1\n",
+        "class Example:\n" "    def run(self):\n" "        return 1\n",
         encoding="utf-8",
     )
 
@@ -48,9 +53,7 @@ def test_build_summary_renders_station_names(tmp_path):
 def test_run_interactive_console_shows_station_details(monkeypatch, capsys, tmp_path):
     sample = tmp_path / "sample.py"
     sample.write_text(
-        "class Example:\n"
-        "    def run(self):\n"
-        "        return 1\n",
+        "class Example:\n" "    def run(self):\n" "        return 1\n",
         encoding="utf-8",
     )
 
@@ -69,9 +72,7 @@ def test_run_interactive_console_shows_station_details(monkeypatch, capsys, tmp_
 def test_build_visual_preview_includes_station_names(tmp_path):
     sample = tmp_path / "sample.py"
     sample.write_text(
-        "class Example:\n"
-        "    def run(self):\n"
-        "        return 1\n",
+        "class Example:\n" "    def run(self):\n" "        return 1\n",
         encoding="utf-8",
     )
 
@@ -85,9 +86,7 @@ def test_build_visual_preview_includes_station_names(tmp_path):
 def test_run_visual_dashboard_renders_header(monkeypatch, capsys, tmp_path):
     sample = tmp_path / "sample.py"
     sample.write_text(
-        "class Example:\n"
-        "    def run(self):\n"
-        "        return 1\n",
+        "class Example:\n" "    def run(self):\n" "        return 1\n",
         encoding="utf-8",
     )
 
@@ -104,9 +103,7 @@ def test_run_visual_dashboard_renders_header(monkeypatch, capsys, tmp_path):
 def test_export_map_creates_file(tmp_path):
     sample = tmp_path / "sample.py"
     sample.write_text(
-        "class Example:\n"
-        "    def run(self):\n"
-        "        return 1\n",
+        "class Example:\n" "    def run(self):\n" "        return 1\n",
         encoding="utf-8",
     )
 
@@ -128,9 +125,7 @@ def test_export_map_creates_file(tmp_path):
 def test_export_map_creates_svg(tmp_path):
     sample = tmp_path / "sample.py"
     sample.write_text(
-        "class Example:\n"
-        "    def run(self):\n"
-        "        return 1\n",
+        "class Example:\n" "    def run(self):\n" "        return 1\n",
         encoding="utf-8",
     )
 
