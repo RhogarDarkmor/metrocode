@@ -11,62 +11,64 @@ import math
 def calcular_layout(grafo, modo="metro"):
     """
     Calcula as posições (x, y) de cada nó do grafo.
-    
+
     Modos disponíveis:
-    - "metro": simula o mapa esquemático do metrô (spring_layout adaptado)
+    - "metro": simula o mapa esquemático do metrô (layout em colunas)
     - "geografico": distribuição baseada em força (kamada_kawai)
     - "circular": tudo em círculo (bom pra poucos nós)
     """
-    
+
     estacoes = [n for n, d in grafo.nodes(data=True) if d.get("tipo") == "estacao"]
     plataformas = [n for n, d in grafo.nodes(data=True) if d.get("tipo") in ("funcao", "classe", "metodo")]
-    
+
     if modo == "metro":
-        posicoes = _layout_metro(grafo, estacoes, plataformas)
-    elif modo == "geografico":
-        posicoes = nx.kamada_kawai_layout(grafo)
-    elif modo == "circular":
-        posicoes = nx.circular_layout(grafo)
-    else:
-        posicoes = nx.spring_layout(grafo, seed=42)
-    
-    return posicoes
+        return _layout_metro(grafo, estacoes, plataformas)
+    if modo == "geografico":
+        return nx.kamada_kawai_layout(grafo)
+    if modo == "circular":
+        return nx.circular_layout(grafo)
+    return nx.spring_layout(grafo, seed=42)
 
 
 def _layout_metro(grafo, estacoes, plataformas):
     """
-    Layout personalizado que imita um mapa de metrô.
+    Layout personalizado que imita um mapa de metrô com linhas retas.
     """
-    posicoes = {}
-    
-    num_estacoes = len(estacoes)
-    colunas = math.ceil(math.sqrt(num_estacoes))
-    
-    for i, estacao in enumerate(estacoes):
-        linha_grid = i // colunas
-        coluna_grid = i % colunas
-        
-        x = coluna_grid * 3.0
-        y = linha_grid * 3.0
-        
-        posicoes[estacao] = (x, y)
-        
-        plataformas_da_estacao = [
-            p for p in plataformas 
+    if not estacoes:
+        return {}
+
+    positions: dict[str, tuple[float, float]] = {}
+    lines: dict[str, list[str]] = {}
+
+    for estacao in estacoes:
+        modulo = grafo.nodes[estacao].get("modulo") or estacao
+        line_key = modulo.split(".")[0]
+        lines.setdefault(line_key, []).append(estacao)
+
+    ordered_lines = sorted(lines.keys(), key=lambda key: (-len(lines[key]), key))
+    x_gap = 6.0
+    y_gap = 3.5
+
+    for col, line_key in enumerate(ordered_lines):
+        line_nodes = sorted(lines[line_key], key=lambda s: (-grafo.degree(s), s))
+        for row, estacao in enumerate(line_nodes):
+            positions[estacao] = (col * x_gap, row * y_gap)
+
+    for estacao in estacoes:
+        x, y = positions[estacao]
+        platforms = [
+            p for p in plataformas
             if grafo.nodes[p].get("estacao_pai") == estacao
         ]
-        
-        num_plats = len(plataformas_da_estacao)
-        for j, plat in enumerate(plataformas_da_estacao):
-            angulo = (j / max(num_plats, 1)) * 2 * math.pi
-            raio = 0.8
-            
-            px = x + raio * math.cos(angulo)
-            py = y + raio * math.sin(angulo)
-            
-            posicoes[plat] = (px, py)
-    
-    return posicoes
+        if not platforms:
+            continue
+
+        radius = 0.8 + min(len(platforms), 6) * 0.15
+        for index, platform in enumerate(platforms):
+            angle = (index / len(platforms)) * 2 * math.pi
+            positions[platform] = (x + radius * math.cos(angle), y + radius * math.sin(angle))
+
+    return positions
 
 
 if __name__ == "__main__":

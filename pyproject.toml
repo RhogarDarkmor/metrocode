@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "metrocode"
-version = "0.1.0"
+version = "0.1.1"
 description = "Transforme seu código Python em um mapa interativo no terminal — igual ao mapa do metrô de São Paulo."
 authors = ["RhogarDarkmor"]
 license = "MIT"

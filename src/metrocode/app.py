@@ -66,14 +66,14 @@ def _normalize_station_name(name: str) -> str:
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, ListItem, ListView, Static
 
 from .parser import parse_project
 from .graph_builder import construir_grafo
 from .layout_engine import calcular_layout
+from . import __version__
 
 
 def build_summary(mapa_data: dict[str, Any]) -> str:
@@ -122,20 +122,27 @@ def build_visual_preview(mapa_data: dict[str, Any], selected_station: str | None
     if not estacoes:
         return "Mapa visual\nNenhuma estação disponível."
 
-    linhas = ["Mapa visual", "=" * 28, ""]
-    for index, station in enumerate(estacoes[:8]):
-        marcador = "▶" if selected_station and station == selected_station else "●"
-        linhas.append(f"{marcador} {station}")
-        if index < min(len(estacoes), 8) - 1:
-            linhas.append("   │")
+    grupos: dict[str, list[str]] = {}
+    for station, dados in mapa_data.get("estacoes", {}).items():
+        modulo = dados.get("modulo") or station
+        raiz = modulo.split(".")[0]
+        grupos.setdefault(raiz, []).append(station)
 
-    if len(estacoes) > 8:
-        linhas.append("   ...")
+    linhas = ["Mapa visual", "=" * 28, ""]
+    for raiz, stations in sorted(grupos.items()):
+        linha = " ─> ".join(stations[:6])
+        if len(stations) > 6:
+            linha += " ..."
+        linhas.append(f"[{raiz}] {linha}")
+
+    if selected_station:
+        linhas.append("")
+        linhas.append(f"Estação selecionada: {selected_station}")
 
     return "\n".join(linhas)
 
 
-def export_map_image(mapa_data: dict[str, Any], *, output: str = "metrocode_map.png", fmt: str = "png", layout_mode: str = "metro") -> str:
+def export_map_image(mapa_data: dict[str, Any], *, output: str | Path = "metrocode_map.png", fmt: str = "png", layout_mode: str = "metro") -> str:
     """Exporta o mapa como imagem (PNG ou SVG) usando NetworkX + Matplotlib.
 
     Retorna o caminho do arquivo gerado.
@@ -148,21 +155,87 @@ def export_map_image(mapa_data: dict[str, Any], *, output: str = "metrocode_map.
     except Exception as exc:  # pragma: no cover - environment-specific
         raise RuntimeError("matplotlib e networkx são necessários para exportar imagens") from exc
 
+    fmt = fmt.lower()
+    if fmt not in {"png", "svg"}:
+        raise ValueError("Formato de exportação inválido. Use 'png' ou 'svg'.")
+
     grafo = construir_grafo(mapa_data)
     pos = calcular_layout(grafo, modo=layout_mode)
 
-    plt.figure(figsize=(10, 8))
-    nx.draw_networkx_nodes(grafo, pos, node_size=200, node_color="#1f77b4")
-    nx.draw_networkx_edges(grafo, pos, alpha=0.6)
-    labels = {n: n.split("::")[1] if "::" in n else n for n in grafo.nodes()}
-    nx.draw_networkx_labels(grafo, pos, labels=labels, font_size=8)
+    station_nodes = [n for n, d in grafo.nodes(data=True) if d.get("tipo") == "estacao"]
+    station_graph = grafo.subgraph(station_nodes)
 
-    plt.axis("off")
-    plt.tight_layout()
-    out = str(output)
-    plt.savefig(out, format=fmt, dpi=150)
-    plt.close()
-    return out
+    fig, ax = plt.subplots(figsize=(16, 12))
+    fig.patch.set_facecolor("#f8fafc")
+    ax.set_facecolor("#f8fafc")
+
+    edge_colors = [d.get("cor", "#444444") for _, _, d in station_graph.edges(data=True)]
+    edge_widths = [4 if d.get("tipo") == "import" else 2 for _, _, d in station_graph.edges(data=True)]
+
+    nx.draw_networkx_edges(
+        station_graph,
+        pos,
+        ax=ax,
+        edge_color=edge_colors,
+        width=edge_widths,
+        alpha=0.95,
+        arrows=False,
+    )
+
+    nx.draw_networkx_nodes(
+        station_graph,
+        pos,
+        ax=ax,
+        nodelist=station_nodes,
+        node_size=760,
+        node_color="#ffffff",
+        edgecolors="#111827",
+        linewidths=2.4,
+        alpha=0.98,
+    )
+
+    labels = {
+        n: n.rsplit("/", 1)[-1].replace(".py", "")
+        for n in station_nodes
+    }
+    for n in station_nodes:
+        x, y = pos[n]
+        ax.text(
+            x,
+            y,
+            labels[n],
+            fontsize=8,
+            ha="center",
+            va="center",
+            color="#111827",
+            bbox={"facecolor": "#ffffff", "edgecolor": "#111827", "boxstyle": "round,pad=0.2", "alpha": 0.95},
+        )
+
+    legend_items = sorted({d.get("modulo", "externo").split(".")[0] for _, _, d in station_graph.edges(data=True) if d.get("modulo")})
+    if legend_items:
+        legend_text = "Linhas: " + ", ".join(legend_items[:10])
+        ax.text(
+            0.02,
+            0.98,
+            legend_text,
+            transform=ax.transAxes,
+            fontsize=8,
+            va="top",
+            ha="left",
+            bbox={"facecolor": "#ffffff", "edgecolor": "#111827", "boxstyle": "round,pad=0.3", "alpha": 0.95},
+        )
+
+    ax.set_aspect("equal")
+    ax.axis("off")
+    fig.tight_layout()
+
+    out_path = Path(output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, format=fmt, dpi=200)
+    import matplotlib.pyplot as _plt
+    _plt.close(fig)
+
+    return str(out_path)
 
 
 def build_station_details(mapa_data: dict[str, Any], station_name: str) -> str:
@@ -194,12 +267,14 @@ def build_station_details(mapa_data: dict[str, Any], station_name: str) -> str:
     if trilhos:
         linhas.append("\n🔗 Trilhos:")
         for trilho in trilhos[:6]:
-            origem = trilho.get("origem")
-            destino = trilho.get("destino")
-            if origem and destino:
-                linhas.append(f"   - {origem} -> {destino}")
-            elif destino:
-                linhas.append(f"   - {destino}")
+            qualificado = trilho.get("qualificado")
+            modulo = trilho.get("modulo")
+            nome = trilho.get("nome")
+            alias = trilho.get("alias")
+            descricao = qualificado or modulo or nome or "import desconhecido"
+            if alias:
+                descricao += f" as {alias}"
+            linhas.append(f"   - {descricao}")
 
     return "\n".join(linhas)
 
@@ -398,9 +473,11 @@ class MetroApp(MetroCodeApp):
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="metrocode", description="Gera um mapa interativo do código fonte")
+    parser.add_argument("--version", action="version", version=f"metrocode {__version__}")
     parser.add_argument("path", nargs="?", default=".", help="Caminho local, URL git, owner/repo ou ZIP")
     parser.add_argument("--json", "-j", dest="output", action="store_const", const="json", help="Saída em JSON")
     parser.add_argument("--text", "-t", dest="output", action="store_const", const="text", help="Saída em texto")
+    parser.add_argument("--no-gui", dest="use_ui", action="store_false", default=True, help="Executar em modo texto, mesmo em terminal interativo")
     parser.add_argument("--export", "-e", dest="export_path", help="Exportar mapa para arquivo (png/svg)")
     parser.add_argument("--format", dest="export_format", default="png", help="Formato de exportação (png|svg)")
     parser.add_argument("--layout", dest="export_layout", default="metro", help="Modo de layout (metro|geografico|circular)")
@@ -425,6 +502,7 @@ def main(argv: list[str] | None = None) -> None:
 
     path = parsed.path
     output_format = parsed.output or "ui"
+    use_ui = parsed.use_ui
     export_path: str | None = parsed.export_path
     export_format = parsed.export_format
     export_layout = parsed.export_layout
@@ -492,7 +570,7 @@ def main(argv: list[str] | None = None) -> None:
             print(f"Exportado: {out}")
             return
 
-        if output_format == "text" or not sys.stdout.isatty():
+        if output_format == "text" or not use_ui or not sys.stdout.isatty():
             print(build_summary(mapa_data))
             return
 

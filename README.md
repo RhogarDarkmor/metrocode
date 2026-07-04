@@ -1,5 +1,9 @@
 # 🚇 MetrôCode
 
+[![CI](https://github.com/RhogarDarkmor/metrocode/actions/workflows/python-ci.yml/badge.svg)](https://github.com/RhogarDarkmor/metrocode/actions/workflows/python-ci.yml)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 **Transforme seu código Python em um mapa interativo no terminal — igual ao mapa do metrô de São Paulo.**
 
 - Arquivos são estações

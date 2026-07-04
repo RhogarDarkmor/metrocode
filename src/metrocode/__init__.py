@@ -1,3 +1,5 @@
+__version__ = "0.1.1"
+
 __all__ = [
     "MetroApp",
     "MetroCodeApp",
@@ -7,6 +9,7 @@ __all__ = [
     "calcular_layout",
     "construir_grafo",
     "parse_project",
+    "__version__",
 ]
 
 

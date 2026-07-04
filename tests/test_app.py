@@ -123,3 +123,26 @@ def test_export_map_creates_file(tmp_path):
 
     assert path == str(out)
     assert out.exists()
+
+
+def test_export_map_creates_svg(tmp_path):
+    sample = tmp_path / "sample.py"
+    sample.write_text(
+        "class Example:\n"
+        "    def run(self):\n"
+        "        return 1\n",
+        encoding="utf-8",
+    )
+
+    data = parse_project(tmp_path)
+    out = tmp_path / "out.svg"
+
+    try:
+        import matplotlib  # type: ignore
+    except Exception:
+        return
+
+    path = export_map_image(data, output=str(out), fmt="svg", layout_mode="metro")
+
+    assert path == str(out)
+    assert out.exists()

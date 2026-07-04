@@ -6,37 +6,71 @@ com estações (nós) e trilhos (arestas) coloridos igual linha de metrô.
 
 from __future__ import annotations
 
+from typing import Any
 import networkx as nx
 
 
-CORES_LINHAS = {
-    "azul": "#0033A0",
-    "verde": "#007F4E",
-    "vermelha": "#EE1D23",
-    "amarela": "#FFC72C",
-    "lilas": "#9B59B6",
-    "rubi": "#E87200",
-    "diamante": "#7F7F7F",
-    "esmeralda": "#00A88F",
-    "turquesa": "#00B5E2",
+LINE_COLORS: dict[str, str] = {
+    "azul": "#005FA7",
+    "verde": "#009246",
+    "vermelha": "#EE2737",
+    "amarela": "#FEDD00",
+    "lilas": "#8C4799",
+    "prata": "#A7A9AC",
+    "ouro": "#FFCD00",
+    "rosa": "#E3007D",
+    "bronze": "#8A5B2C",
+    "turquesa": "#00A9B7",
     "coral": "#F07D7D",
-    "safira": "#1A2B5F",
-    "jade": "#2E8B57",
+    "magneta": "#C4007E",
 }
 
-COR_PADRAO = "#AAAAAA"
+DEFAULT_EDGE_COLOR = "#AAAAAA"
 
 
-def construir_grafo(mapa):
+def _choose_edge_color(modulo: str, line_color_map: dict[str, str]) -> str:
+    root_module = modulo.split(".")[0]
+    if root_module not in line_color_map:
+        available_colors = [color for color in LINE_COLORS.values() if color not in line_color_map.values()]
+        line_color_map[root_module] = available_colors[0] if available_colors else DEFAULT_EDGE_COLOR
+    return line_color_map[root_module]
+
+
+def _find_target_station(modulo: str, module_to_station: dict[str, str]) -> str | None:
+    if not modulo:
+        return None
+
+    if modulo in module_to_station:
+        return module_to_station[modulo]
+
+    candidates = [
+        (station, mod)
+        for mod, station in module_to_station.items()
+        if modulo.startswith(mod + ".") or mod.startswith(modulo + ".")
+    ]
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: len(item[1]), reverse=True)
+    return candidates[0][0]
+
+
+def construir_grafo(mapa: dict[str, Any]) -> nx.Graph:
     """Recebe o dicionário do parser e devolve um grafo NetworkX."""
     grafo = nx.Graph()
-    linhas_usadas: dict[str, str] = {}
+    line_color_map: dict[str, str] = {}
+    module_to_station: dict[str, str] = {
+        dados["modulo"]: nome_estacao
+        for nome_estacao, dados in mapa.get("estacoes", {}).items()
+        if dados.get("modulo")
+    }
 
     for nome_estacao, dados in mapa.get("estacoes", {}).items():
         grafo.add_node(
             nome_estacao,
             tipo="estacao",
             nome=nome_estacao,
+            modulo=dados.get("modulo", ""),
             total_plataformas=dados.get("total_plataformas", 0),
             total_trilhos=dados.get("total_trilhos", 0),
         )
@@ -54,31 +88,34 @@ def construir_grafo(mapa):
                 grafo.add_edge(nome_estacao, id_plataforma, tipo="interno", cor="#555555")
 
         for trilho in dados.get("trilhos", []):
-            modulo_importado = trilho.get("origem") or trilho.get("destino")
+            modulo_importado = trilho.get("qualificado") or trilho.get("modulo") or trilho.get("destino")
             if not modulo_importado:
                 continue
 
+            cor_trilho = _choose_edge_color(modulo_importado, line_color_map)
+            target_station = _find_target_station(modulo_importado, module_to_station)
+
+            if target_station and target_station != nome_estacao:
+                if not grafo.has_edge(nome_estacao, target_station):
+                    grafo.add_edge(
+                        nome_estacao,
+                        target_station,
+                        tipo="import",
+                        cor=cor_trilho,
+                        modulo=modulo_importado,
+                    )
+                continue
+
             modulo_raiz = modulo_importado.split(".")[0]
-
-            if modulo_raiz not in linhas_usadas:
-                cores_disponiveis = [c for c in CORES_LINHAS.values() if c not in linhas_usadas.values()]
-                linhas_usadas[modulo_raiz] = cores_disponiveis[0] if cores_disponiveis else COR_PADRAO
-
-            cor_trilho = linhas_usadas[modulo_raiz]
-
-            for outra_estacao, outros_dados in mapa.get("estacoes", {}).items():
-                if outra_estacao == nome_estacao:
-                    continue
-                for outro_trilho in outros_dados.get("trilhos", []):
-                    outro_modulo = outro_trilho.get("origem") or outro_trilho.get("destino")
-                    if outro_modulo and outro_modulo.split(".")[0] == modulo_raiz:
-                        if not grafo.has_edge(nome_estacao, outra_estacao):
-                            grafo.add_edge(
-                                nome_estacao,
-                                outra_estacao,
-                                tipo="trilho",
-                                cor=cor_trilho,
-                                modulo=modulo_raiz,
-                            )
+            target_station = _find_target_station(modulo_raiz, module_to_station)
+            if target_station and target_station != nome_estacao:
+                if not grafo.has_edge(nome_estacao, target_station):
+                    grafo.add_edge(
+                        nome_estacao,
+                        target_station,
+                        tipo="import",
+                        cor=cor_trilho,
+                        modulo=modulo_raiz,
+                    )
 
     return grafo

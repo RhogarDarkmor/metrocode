@@ -9,7 +9,9 @@ import ast
 from pathlib import Path
 from typing import Any
 
+MapaData = dict[str, Any]
 
+AST_FUNCTION_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef)
 PASTAS_IGNORADAS = {
     "__pycache__",
     "venv",
@@ -22,14 +24,44 @@ PASTAS_IGNORADAS = {
     ".vscode",
     "dist",
     "build",
+    ".mypy_cache",
+    ".pytest_cache",
 }
 
 
-def parse_project(root_path: str | Path | None = ".") -> dict[str, Any]:
+def _is_ignored_path(caminho: Path) -> bool:
+    return any(pasta in caminho.parts for pasta in PASTAS_IGNORADAS)
+
+
+def _module_name_from_path(caminho: Path, root: Path) -> str:
+    relativo = caminho.relative_to(root).as_posix()
+    if relativo == "__init__.py":
+        return ""
+    if relativo.endswith("/__init__.py"):
+        relativo = relativo[: -len("/__init__.py")]
+    elif relativo.endswith(".py"):
+        relativo = relativo[: -len(".py")]
+    return relativo.replace("/", ".")
+
+
+def _resolve_relative_import(module: str | None, level: int, current_module: str) -> str:
+    current_parts = current_module.split(".") if current_module else []
+    if current_parts:
+        current_parts = current_parts[:-1]
+
+    parent_parts = current_parts[: max(len(current_parts) - level + 1, 0)]
+    if module:
+        if parent_parts:
+            return ".".join([*parent_parts, *module.split(".")])
+        return module
+    return ".".join(parent_parts)
+
+
+def parse_project(root_path: str | Path | None = ".") -> MapaData:
     """Percorre uma pasta de projeto Python e extrai a estrutura do código."""
     root = Path(root_path or ".").resolve()
 
-    mapa: dict[str, Any] = {
+    mapa: MapaData = {
         "root": str(root),
         "estacoes": {},
         "total_estacoes": 0,
@@ -39,7 +71,7 @@ def parse_project(root_path: str | Path | None = ".") -> dict[str, Any]:
         return mapa
 
     for caminho_atual in sorted(root.rglob("*.py")):
-        if not caminho_atual.is_file() or any(pasta in caminho_atual.parts for pasta in PASTAS_IGNORADAS):
+        if not caminho_atual.is_file() or _is_ignored_path(caminho_atual):
             continue
 
         try:
@@ -48,11 +80,12 @@ def parse_project(root_path: str | Path | None = ".") -> dict[str, Any]:
         except (SyntaxError, UnicodeDecodeError, OSError):
             continue
 
+        modulo_atual = _module_name_from_path(caminho_atual, root)
         plataformas: list[dict[str, Any]] = []
         trilhos: list[dict[str, Any]] = []
 
         for nodo in ast.walk(arvore):
-            if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if isinstance(nodo, AST_FUNCTION_TYPES):
                 plataformas.append(
                     {
                         "tipo": "funcao",
@@ -63,7 +96,7 @@ def parse_project(root_path: str | Path | None = ".") -> dict[str, Any]:
             elif isinstance(nodo, ast.ClassDef):
                 metodos = []
                 for item in nodo.body:
-                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if isinstance(item, AST_FUNCTION_TYPES):
                         metodos.append(
                             {
                                 "tipo": "metodo",
@@ -82,20 +115,38 @@ def parse_project(root_path: str | Path | None = ".") -> dict[str, Any]:
                 )
             elif isinstance(nodo, ast.Import):
                 for alias in nodo.names:
-                    trilhos.append({"tipo": "import", "destino": alias.name})
+                    trilhos.append(
+                        {
+                            "tipo": "import",
+                            "modulo": alias.name,
+                            "alias": alias.asname,
+                            "qualificado": alias.name,
+                        }
+                    )
             elif isinstance(nodo, ast.ImportFrom):
-                if nodo.module:
-                    for alias in nodo.names:
-                        trilhos.append(
-                            {
-                                "tipo": "import_from",
-                                "origem": nodo.module,
-                                "destino": alias.name,
-                            }
-                        )
+                resolved_module = _resolve_relative_import(nodo.module, nodo.level, modulo_atual)
+                for alias in nodo.names:
+                    if alias.name == "*":
+                        qualificado = resolved_module or "*"
+                    elif resolved_module:
+                        qualificado = f"{resolved_module}.{alias.name}"
+                    else:
+                        qualificado = alias.name
 
-        nome_estacao = str(caminho_atual.relative_to(root)).replace("\\", "/")
+                    trilhos.append(
+                        {
+                            "tipo": "import_from",
+                            "modulo": resolved_module,
+                            "nome": alias.name,
+                            "alias": alias.asname,
+                            "qualificado": qualificado,
+                            "nivel": nodo.level,
+                        }
+                    )
+
+        nome_estacao = caminho_atual.relative_to(root).as_posix()
         mapa["estacoes"][nome_estacao] = {
+            "modulo": modulo_atual,
             "plataformas": plataformas,
             "trilhos": trilhos,
             "total_plataformas": len(plataformas),
