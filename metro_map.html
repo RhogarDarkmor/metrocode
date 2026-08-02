@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>MetroCode</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #0d1117; overflow: hidden; height: 100vh; }
+        #map-container { width: 100%; height: 100vh; }
+        svg { width: 100%; height: 100%; background: #1a1e24; }
+        .estacao circle { cursor: pointer; transition: r 0.2s; }
+        .estacao circle:hover { r: 14; }
+        .tooltip {
+            position: absolute;
+            background: #2d333b;
+            color: #c9d1d9;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div id="map-container">
+        <svg id="metro-svg"></svg>
+        <div class="tooltip" id="tooltip"></div>
+    </div>
+    <script>
+        const data = {"estacoes": [], "arestas": []};
+
+        function desenharMapa() {
+            const svg = document.getElementById('metro-svg');
+            const tooltip = document.getElementById('tooltip');
+            const container = document.getElementById('map-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+            // Grupo para aplicar zoom/pan
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            svg.appendChild(g);
+
+            let isPanning = false, startX, startY, translateX = 0, translateY = 0, scale = 1;
+
+            svg.addEventListener('mousedown', (e) => {
+                isPanning = true;
+                startX = e.clientX - translateX;
+                startY = e.clientY - translateY;
+            });
+            svg.addEventListener('mousemove', (e) => {
+                if (isPanning) {
+                    translateX = e.clientX - startX;
+                    translateY = e.clientY - startY;
+                    atualizarTransformacao();
+                }
+                // tooltip movement
+                tooltip.style.left = (e.pageX + 15) + 'px';
+                tooltip.style.top = (e.pageY - 30) + 'px';
+            });
+            svg.addEventListener('mouseup', () => isPanning = false);
+            svg.addEventListener('mouseleave', () => isPanning = false);
+            svg.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const fator = e.deltaY > 0 ? 0.9 : 1.1;
+                scale *= fator;
+                scale = Math.min(Math.max(0.3, scale), 2);
+                atualizarTransformacao();
+            });
+
+            function atualizarTransformacao() {
+                g.setAttribute('transform', `translate(${translateX},${translateY}) scale(${scale})`);
+            }
+
+            const estacoesMap = new Map(data.estacoes.map(e => [e.id, e]));
+
+            // Desenhar arestas
+            data.arestas.forEach(a => {
+                const de = estacoesMap.get(a.de);
+                const para = estacoesMap.get(a.para);
+                if (!de || !para) return;
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                const dx = para.x - de.x, dy = para.y - de.y;
+                const dr = Math.sqrt(dx*dx + dy*dy) * 1.5;
+                const d = `M${de.x},${de.y}A${dr},${dr} 0 0,1 ${para.x},${para.y}`;
+                path.setAttribute('d', d);
+                path.setAttribute('fill', 'none');
+                path.setAttribute('stroke', a.tipo === 'baldeacao' ? '#f0f0f0' : de.cor_linha);
+                path.setAttribute('stroke-width', a.tipo === 'baldeacao' ? 2.5 : 4);
+                path.setAttribute('stroke-dasharray', a.tipo === 'baldeacao' ? '8,4' : 'none');
+                path.setAttribute('opacity', 0.8);
+                g.appendChild(path);
+            });
+
+            // Desenhar estações
+            data.estacoes.forEach(est => {
+                const grupo = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                grupo.setAttribute('transform', `translate(${est.x},${est.y})`);
+                grupo.classList.add('estacao');
+
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('r', 12);
+                circle.setAttribute('fill', '#ffffff');
+                circle.setAttribute('stroke', est.cor_linha);
+                circle.setAttribute('stroke-width', 4);
+
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('dy', -18);
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('fill', '#c9d1d9');
+                text.style.fontSize = '0.7rem';
+                text.textContent = est.nome;
+
+                grupo.appendChild(circle);
+                grupo.appendChild(text);
+
+                // Tooltip interativo
+                grupo.addEventListener('mouseenter', () => {
+                    tooltip.innerHTML = `<strong>${est.nome}</strong><br>${est.resumo}<br><em>${est.arquivo}</em>`;
+                    tooltip.style.opacity = 1;
+                });
+                grupo.addEventListener('mouseleave', () => {
+                    tooltip.style.opacity = 0;
+                });
+
+                g.appendChild(grupo);
+            });
+        }
+
+        window.addEventListener('load', desenharMapa);
+    </script>
+</body>
+</html>
